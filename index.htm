@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>Pedidos · Minimalista</title>
+  <style>
+    /* ---------- RESET & BASE (dark theme) ---------- */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    }
+
+    body {
+      background: #0b0d0f;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 16px 12px 40px;
+      color: #e9edf2;
+    }
+
+    .app {
+      max-width: 480px;
+      width: 100%;
+      background: #14171a;
+      border-radius: 32px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+      padding: 20px 16px 28px;
+      transition: all 0.2s;
+      border: 1px solid #262a2f;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 450;
+      letter-spacing: -0.2px;
+      color: #f0f4f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    h1 small {
+      font-size: 0.75rem;
+      font-weight: 400;
+      color: #7a828a;
+      margin-left: auto;
+      background: #22272e;
+      padding: 4px 12px;
+      border-radius: 40px;
+      border: 1px solid #2f353d;
+    }
+
+    /* ---------- FORMULÁRIO ---------- */
+    .form-card {
+      background: #1a1e23;
+      border-radius: 24px;
+      padding: 18px 14px 20px;
+      margin-bottom: 20px;
+      border: 1px solid #272d34;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .campo {
+      margin-bottom: 16px;
+    }
+    .campo:last-of-type {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #9aa3ad;
+      letter-spacing: 0.4px;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 14px 14px;
+      background: #0f1216;
+      border: 1px solid #2a3038;
+      border-radius: 18px;
+      font-size: 1rem;
+      color: #e9edf2;
+      transition: 0.2s;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input::placeholder {
+      color: #5a6370;
+    }
+
+    input:focus, select:focus {
+      border-color: #5b7cfa;
+      background: #14181d;
+      box-shadow: 0 0 0 3px rgba(91, 124, 250, 0.12);
+    }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237a828a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      background-size: 16px;
+      padding-right: 44px;
+    }
+
+    select option {
+      background: #1a1e23;
+      color: #e9edf2;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      flex: 1;
+      min-width: 100px;
+      padding: 14px 12px;
+      border: none;
+      border-radius: 40px;
+      font-weight: 500;
+      font-size: 0.9rem;
+      background: #262c34;
+      color: #d1d9e0;
+      cursor: pointer;
+      transition: 0.15s;
+      text-align: center;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: #5b7cfa;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(91, 124, 250, 0.15);
+    }
+    .btn-primary:active { background: #4a6ae0; transform: scale(0.97); }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #2f353d;
+      color: #b0b8c0;
+    }
+    .btn-outline:active { background: #1f242b; }
+
+    .btn-danger {
+      background: #3f2525;
+      color: #f5a3a3;
+      border: 1px solid #5a2e2e;
+    }
+    .btn-danger:active { background: #4f2a2a; }
+
+    /* ---------- FILTRO ---------- */
+    .filter-section {
+      margin-bottom: 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: #1a1e23;
+      padding: 12px 14px;
+      border-radius: 20px;
+      border: 1px solid #272d34;
+    }
+
+    .filter-section label {
+      font-size: 0.7rem;
+      color: #7a828a;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-right: 4px;
+    }
+
+    .filter-section select {
+      flex: 1;
+      padding: 10px 14px;
+      background: #0f1216;
+      border: 1px solid #2a3038;
+      border-radius: 14px;
+      font-size: 0.9rem;
+      color: #e9edf2;
+      min-width: 140px;
+    }
+
+    .filter-section .filter-count {
+      font-size: 0.75rem;
+      color: #7a828a;
+      background: #22272e;
+      padding: 4px 12px;
+      border-radius: 40px;
+      border: 1px solid #2f353d;
+      white-space: nowrap;
+    }
+
+    /* ---------- LISTA DE PEDIDOS ---------- */
+    .orders-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 8px 0 14px 6px;
+    }
+    .orders-header span {
+      font-size: 0.75rem;
+      color: #7a828a;
+      background: #1f242b;
+      padding: 2px 14px;
+      border-radius: 40px;
+      border: 1px solid #2a3038;
+    }
+
+    .order-item {
+      background: #181d23;
+      border-radius: 20px;
+      padding: 16px 14px;
+      margin-bottom: 10px;
+      border: 1px solid #262c34;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      transition: 0.1s;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+
+    .order-item .order-id {
+      font-weight: 500;
+      color: #e9edf2;
+      font-size: 0.95rem;
+      background: #262c34;
+      padding: 2px 14px;
+      border-radius: 40px;
+      letter-spacing: 0.2px;
+      border: 1px solid #323a44;
+    }
+
+    .order-item .order-name {
+      flex: 1;
+      font-weight: 400;
+      color: #dce2e9;
+      word-break: break-word;
+      min-width: 100px;
+    }
+
+    .order-item .order-status {
+      font-size: 0.7rem;
+      font-weight: 500;
+      padding: 4px 14px;
+      border-radius: 40px;
+      background: #262c34;
+      color: #b0b8c0;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+      border: 1px solid #323a44;
+    }
+
+    .order-status.status-separado { background: #1a2a4a; color: #8bb3ff; border-color: #2a4a7a; }
+    .order-status.status-saiu { background: #1a3a2a; color: #7cdbaa; border-color: #2a5a3a; }
+    .order-status.status-compra { background: #3a2e1a; color: #f5c77a; border-color: #5a4a2a; }
+    .order-status.status-separacao { background: #2a1a4a; color: #c77aff; border-color: #4a2a7a; }
+
+    .order-actions {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+
+    .order-actions .btn-icon {
+      background: #1f242b;
+      border: 1px solid #2f353d;
+      width: 36px;
+      height: 36px;
+      border-radius: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      color: #9aa3ad;
+      cursor: pointer;
+      transition: 0.1s;
+    }
+    .order-actions .btn-icon:active { background: #2a3038; transform: scale(0.94); }
+    .order-actions .btn-icon.delete { color: #f5a3a3; border-color: #5a2e2e; background: #2a1a1a; }
+    .order-actions .btn-icon.edit { color: #8bb3ff; border-color: #2a4a7a; background: #1a2440; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 10px;
+      color: #5a6370;
+      font-size: 0.9rem;
+      border: 1px dashed #2a3038;
+      border-radius: 32px;
+      margin-top: 12px;
+    }
+
+    /* ---------- RESPONSIVE TOUCH ---------- */
+    @media (max-width: 420px) {
+      .app { padding: 16px 12px; }
+      .order-item { flex-direction: column; align-items: stretch; gap: 8px; }
+      .order-actions { margin-left: 0; justify-content: flex-end; }
+      .btn-group .btn { min-width: 80px; }
+      .filter-section { flex-direction: column; align-items: stretch; }
+      .filter-section select { min-width: unset; }
+    }
+
+    /* hint de edição */
+    #editHint {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: #7a828a;
+      text-align: center;
+      display: none;
+      background: #1a1e23;
+      padding: 6px 12px;
+      border-radius: 40px;
+      border: 1px solid #2a3038;
+    }
+
+    /* status message */
+    #statusMsg {
+      margin-top: 10px;
+      padding: 8px 14px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      display: none;
+      border: 1px solid #2a3038;
+      background: #1a1e23;
+      color: #7a828a;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <h1>
+    <span>📋</span> pedidos
+    <small id="orderCount">0</small>
+  </h1>
+
+  <!-- FORMULÁRIO -->
+  <div class="form-card" id="formCard">
+    <div class="campo">
+      <label for="orderNumber">Número do pedido</label>
+      <input type="number" id="orderNumber" placeholder="ex: 1001" inputmode="numeric">
+    </div>
+    <div class="campo">
+      <label for="clientName">Nome do cliente</label>
+      <input type="text" id="clientName" placeholder="Cliente" autocomplete="off">
+    </div>
+    <div class="campo">
+      <label for="orderStatus">Status</label>
+      <select id="orderStatus">
+        <option value="Separado">Separado</option>
+        <option value="em separação">em separação</option>
+        <option value="em compra">em compra</option>
+        <option value="Saiu">Saiu</option>
+      </select>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" id="addOrderBtn">+ adicionar</button>
+      <button class="btn btn-outline" id="clearAllBtn">limpar</button>
+    </div>
+    <div id="editHint">✏️ editando pedido #<span id="editIdHint"></span></div>
+    <div id="statusMsg"></div>
+  </div>
+
+  <!-- FILTRO -->
+  <div class="filter-section">
+    <label for="filterStatus">🔍 filtrar</label>
+    <select id="filterStatus">
+      <option value="todos">Todos os status</option>
+      <option value="Separado">Separado</option>
+      <option value="em separação">em separação</option>
+      <option value="em compra">em compra</option>
+      <option value="Saiu">Saiu</option>
+    </select>
+    <span class="filter-count" id="filterCount">0</span>
+  </div>
+
+  <!-- LISTA DE PEDIDOS -->
+  <div class="orders-header">
+    <span>📦 pedidos salvos</span>
+    <span id="orderCountLabel">0</span>
+  </div>
+  <div id="orderList">
+    <div class="empty-state">nenhum pedido registrado</div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    "use strict";
+
+    // ----- DOM refs -----
+    const orderNumberInput = document.getElementById('orderNumber');
+    const clientNameInput  = document.getElementById('clientName');
+    const orderStatusSelect = document.getElementById('orderStatus');
+    const addBtn = document.getElementById('addOrderBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const orderListEl = document.getElementById('orderList');
+    const orderCountSpan = document.getElementById('orderCount');
+    const orderCountLabel = document.getElementById('orderCountLabel');
+    const editHint = document.getElementById('editHint');
+    const editIdHint = document.getElementById('editIdHint');
+    const statusMsg = document.getElementById('statusMsg');
+    const filterStatus = document.getElementById('filterStatus');
+    const filterCount = document.getElementById('filterCount');
+
+    // ----- state -----
+    let orders = [];
+    let editingIndex = -1;  // -1 = modo adição, >=0 = editando
+    let currentFilter = 'todos';
+
+    // ----- UI Helpers -----
+    function showStatus(message, isError = false) {
+      statusMsg.textContent = message;
+      statusMsg.style.display = 'block';
+      statusMsg.style.color = isError ? '#f5a3a3' : '#7cdbaa';
+      statusMsg.style.background = isError ? '#2a1a1a' : '#1a2a1a';
+      statusMsg.style.borderColor = isError ? '#5a2e2e' : '#2a5a3a';
+      setTimeout(() => {
+        statusMsg.style.display = 'none';
+      }, 4000);
+    }
+
+    // ----- Local Storage -----
+    function loadOrders() {
+      try {
+        const stored = localStorage.getItem('orders_minimalist_dark');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) orders = parsed;
+          else orders = [];
+        } else {
+          orders = [];
+        }
+      } catch (_) {
+        orders = [];
+      }
+      // Garantia de campos
+      orders = orders.filter(o => o && typeof o === 'object')
+                     .map(o => ({
+                       id: o.id ?? 0,
+                       cliente: o.cliente ?? '',
+                       status: o.status ?? 'Separado'
+                     }));
+    }
+
+    function saveOrders() {
+      localStorage.setItem('orders_minimalist_dark', JSON.stringify(orders));
+      showStatus(`✅ ${orders.length} pedidos salvos`);
+    }
+
+    // ----- Filter -----
+    function getFilteredOrders() {
+      if (currentFilter === 'todos') {
+        return orders;
+      }
+      return orders.filter(o => o.status === currentFilter);
+    }
+
+    // ----- render -----
+    function render() {
+      const filtered = getFilteredOrders();
+      const count = filtered.length;
+      const totalCount = orders.length;
+      
+      orderCountSpan.textContent = totalCount;
+      orderCountLabel.textContent = totalCount;
+      filterCount.textContent = `${count} ${count === 1 ? 'pedido' : 'pedidos'}`;
+
+      if (count === 0) {
+        const msg = totalCount === 0 ? 'nenhum pedido registrado' : `nenhum pedido com status "${currentFilter}"`;
+        orderListEl.innerHTML = `<div class="empty-state">${msg}</div>`;
+        return;
+      }
+
+      let html = '';
+      for (let i = 0; i < filtered.length; i++) {
+        const o = filtered[i];
+        // Encontra o índice original para edição/remoção
+        const originalIndex = orders.findIndex(order => order.id === o.id && order.cliente === o.cliente && order.status === o.status);
+        const statusClass = 
+          o.status === 'Separado' ? 'status-separado' :
+          o.status === 'Saiu' ? 'status-saiu' :
+          o.status === 'em compra' ? 'status-compra' :
+          o.status === 'em separação' ? 'status-separacao' : '';
+
+        html += `
+          <div class="order-item" data-index="${originalIndex}">
+            <span class="order-id">#${o.id}</span>
+            <span class="order-name">${escapeHtml(o.cliente) || '—'}</span>
+            <span class="order-status ${statusClass}">${escapeHtml(o.status)}</span>
+            <div class="order-actions">
+              <button class="btn-icon edit" data-action="edit" data-index="${originalIndex}" aria-label="editar pedido">✎</button>
+              <button class="btn-icon delete" data-action="delete" data-index="${originalIndex}" aria-label="remover pedido">✕</button>
+            </div>
+          </div>
+        `;
+      }
+      orderListEl.innerHTML = html;
+
+      // eventos delegados para editar e deletar
+      orderListEl.querySelectorAll('[data-action="edit"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          const index = parseInt(this.getAttribute('data-index'), 10);
+          if (!isNaN(index) && index >= 0 && index < orders.length) {
+            startEdit(index);
+          }
+        });
+      });
+
+      orderListEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          const index = parseInt(this.getAttribute('data-index'), 10);
+          if (!isNaN(index) && index >= 0 && index < orders.length) {
+            deleteOrder(index);
+          }
+        });
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    // ----- CRUD -----
+    function addOrUpdateOrder() {
+      const rawId = orderNumberInput.value.trim();
+      if (rawId === '') {
+        alert('Informe o número do pedido.');
+        orderNumberInput.focus();
+        return;
+      }
+      const idNum = Number(rawId);
+      if (isNaN(idNum) || !Number.isFinite(idNum) || idNum < 0) {
+        alert('Número do pedido deve ser um valor numérico válido.');
+        orderNumberInput.value = '';
+        orderNumberInput.focus();
+        return;
+      }
+
+      const cliente = clientNameInput.value.trim() || 'cliente';
+      const status = orderStatusSelect.value;
+
+      // se estiver editando
+      if (editingIndex >= 0) {
+        // verifica se o ID mudou e se já existe outro com esse ID
+        const existing = orders.find((o, idx) => o.id === idNum && idx !== editingIndex);
+        if (existing) {
+          alert(`Já existe um pedido com o número #${idNum}. Use outro número.`);
+          orderNumberInput.value = '';
+          orderNumberInput.focus();
+          return;
+        }
+        // atualiza
+        orders[editingIndex] = { id: idNum, cliente, status };
+        saveOrders();
+        render();
+        showStatus(`✅ Pedido #${idNum} atualizado!`);
+        cancelEdit();
+        return;
+      }
+
+      // modo adição: verifica duplicidade
+      const exists = orders.some(o => o.id === idNum);
+      if (exists) {
+        alert(`Já existe um pedido com o número #${idNum}. Use outro número.`);
+        orderNumberInput.value = '';
+        orderNumberInput.focus();
+        return;
+      }
+
+      // adiciona
+      orders.push({ id: idNum, cliente, status });
+      saveOrders();
+      render();
+      showStatus(`✅ Pedido #${idNum} adicionado!`);
+      // limpa campos
+      orderNumberInput.value = '';
+      clientNameInput.value = '';
+      orderNumberInput.focus();
+    }
+
+    function deleteOrder(index) {
+      if (index < 0 || index >= orders.length) return;
+      const removed = orders[index];
+      if (confirm(`Remover pedido #${removed.id} — ${removed.cliente}?`)) {
+        if (editingIndex === index) cancelEdit();
+        orders.splice(index, 1);
+        saveOrders();
+        render();
+        showStatus(`🗑️ Pedido #${removed.id} removido`);
+      }
+    }
+
+    function startEdit(index) {
+      if (index < 0 || index >= orders.length) return;
+      const order = orders[index];
+      orderNumberInput.value = order.id;
+      clientNameInput.value = order.cliente;
+      orderStatusSelect.value = order.status;
+      editingIndex = index;
+      addBtn.textContent = '💾 atualizar';
+      editHint.style.display = 'block';
+      editIdHint.textContent = order.id;
+      orderNumberInput.focus();
+    }
+
+    function cancelEdit() {
+      editingIndex = -1;
+      addBtn.textContent = '+ adicionar';
+      editHint.style.display = 'none';
+    }
+
+    function clearAllOrders() {
+      if (orders.length === 0) return;
+      if (confirm(`Remover TODOS os ${orders.length} pedidos? Esta ação não pode ser desfeita.`)) {
+        cancelEdit();
+        orders = [];
+        saveOrders();
+        render();
+        showStatus('🗑️ Todos os pedidos foram removidos');
+        orderNumberInput.focus();
+      }
+    }
+
+    // ----- Filter handler -----
+    function handleFilterChange() {
+      currentFilter = filterStatus.value;
+      render();
+    }
+
+    // ----- inicialização -----
+    function init() {
+      loadOrders();
+      render();
+      showStatus(`📦 ${orders.length} pedidos carregados`);
+
+      addBtn.addEventListener('click', addOrUpdateOrder);
+
+      orderNumberInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          clientNameInput.focus();
+        }
+      });
+      clientNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addOrUpdateOrder();
+        }
+      });
+
+      clearAllBtn.addEventListener('click', clearAllOrders);
+      filterStatus.addEventListener('change', handleFilterChange);
+
+      // Se estiver vazio, mantém vazio (sem dados de exemplo)
+    }
+
+    // inicia
+    init();
+  })();
+</script>
+</body>
+</html>
