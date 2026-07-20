@@ -3,7 +3,384 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>Pedidos · Minimalista</title>
+  <title>Pedidos · Firebase</title>
+  <!-- Firebase SDKs -->
+  <script type="module">
+    // Import Firebase SDKs
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
+    import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyA7U97V7XpzxeARahdpiGhB38hBoW40PR4",
+      authDomain: "controle-6e4b3.firebaseapp.com",
+      projectId: "controle-6e4b3",
+      storageBucket: "controle-6e4b3.firebasestorage.app",
+      messagingSenderId: "828048196681",
+      appId: "1:828048196681:web:cf801095c0ee65066bab98",
+      measurementId: "G-HW7DD96K4Q"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const db = getFirestore(app);
+
+    console.log("✅ Firebase inicializado com sucesso!");
+
+    // ----- DOM refs -----
+    const orderNumberInput = document.getElementById('orderNumber');
+    const clientNameInput  = document.getElementById('clientName');
+    const orderStatusSelect = document.getElementById('orderStatus');
+    const addBtn = document.getElementById('addOrderBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const orderListEl = document.getElementById('orderList');
+    const orderCountSpan = document.getElementById('orderCount');
+    const orderCountLabel = document.getElementById('orderCountLabel');
+    const editHint = document.getElementById('editHint');
+    const editIdHint = document.getElementById('editIdHint');
+    const statusMsg = document.getElementById('statusMsg');
+    const filterStatus = document.getElementById('filterStatus');
+    const filterCount = document.getElementById('filterCount');
+
+    // ----- state -----
+    let orders = [];
+    let editingId = null;
+    let currentFilter = 'todos';
+
+    // ----- UI Helpers -----
+    function showStatus(message, isError = false) {
+      statusMsg.textContent = message;
+      statusMsg.style.display = 'block';
+      statusMsg.style.color = isError ? '#f5a3a3' : '#7cdbaa';
+      statusMsg.style.background = isError ? '#2a1a1a' : '#1a2a1a';
+      statusMsg.style.borderColor = isError ? '#5a2e2e' : '#2a5a3a';
+      setTimeout(() => {
+        statusMsg.style.display = 'none';
+      }, 4000);
+    }
+
+    // ----- render com filtro -----
+    function render() {
+      // Aplica filtro
+      let filteredOrders = orders;
+      if (currentFilter !== 'todos') {
+        filteredOrders = orders.filter(o => o.status === currentFilter);
+      }
+
+      const count = filteredOrders.length;
+      const totalCount = orders.length;
+      
+      orderCountSpan.textContent = totalCount;
+      orderCountLabel.textContent = totalCount;
+      filterCount.textContent = `${count} ${count === 1 ? 'pedido' : 'pedidos'}`;
+
+      if (count === 0) {
+        const msg = totalCount === 0 ? 'nenhum pedido registrado' : `nenhum pedido com status "${currentFilter}"`;
+        orderListEl.innerHTML = `<div class="empty-state">${msg}</div>`;
+        return;
+      }
+
+      let html = '';
+      for (let i = 0; i < filteredOrders.length; i++) {
+        const o = filteredOrders[i];
+        const statusClass = 
+          o.status === 'Separado' ? 'status-separado' :
+          o.status === 'Saiu' ? 'status-saiu' :
+          o.status === 'em compra' ? 'status-compra' :
+          o.status === 'em separação' ? 'status-separacao' : '';
+
+        html += `
+          <div class="order-item" data-id="${o.id}">
+            <span class="order-id">#${o.numero}</span>
+            <span class="order-name">${escapeHtml(o.cliente) || '—'}</span>
+            <span class="order-status ${statusClass}">${escapeHtml(o.status)}</span>
+            <div class="order-actions">
+              <button class="btn-icon edit" data-action="edit" data-id="${o.id}" aria-label="editar pedido">✎</button>
+              <button class="btn-icon delete" data-action="delete" data-id="${o.id}" aria-label="remover pedido">✕</button>
+            </div>
+          </div>
+        `;
+      }
+      orderListEl.innerHTML = html;
+
+      // eventos delegados para editar e deletar
+      orderListEl.querySelectorAll('[data-action="edit"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          const id = this.getAttribute('data-id');
+          if (id) startEdit(id);
+        });
+      });
+
+      orderListEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          const id = this.getAttribute('data-id');
+          if (id) deleteOrder(id);
+        });
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    // ----- CRUD com Firebase -----
+    async function addOrUpdateOrder() {
+      const rawId = orderNumberInput.value.trim();
+      if (rawId === '') {
+        alert('Informe o número do pedido.');
+        orderNumberInput.focus();
+        return;
+      }
+      const idNum = Number(rawId);
+      if (isNaN(idNum) || !Number.isFinite(idNum) || idNum < 0) {
+        alert('Número do pedido deve ser um valor numérico válido.');
+        orderNumberInput.value = '';
+        orderNumberInput.focus();
+        return;
+      }
+
+      const cliente = clientNameInput.value.trim() || 'cliente';
+      const status = orderStatusSelect.value;
+
+      try {
+        // se estiver editando
+        if (editingId) {
+          // verifica se o ID mudou e se já existe outro com esse número
+          const existing = orders.find(o => o.numero === idNum && o.id !== editingId);
+          if (existing) {
+            alert(`Já existe um pedido com o número #${idNum}. Use outro número.`);
+            orderNumberInput.value = '';
+            orderNumberInput.focus();
+            return;
+          }
+          // atualiza no Firestore
+          const docRef = doc(db, "pedidos", editingId);
+          await updateDoc(docRef, {
+            numero: idNum,
+            cliente: cliente,
+            status: status
+          });
+          showStatus(`✅ Pedido #${idNum} atualizado!`);
+          cancelEdit();
+          return;
+        }
+
+        // modo adição: verifica duplicidade local
+        const exists = orders.some(o => o.numero === idNum);
+        if (exists) {
+          alert(`Já existe um pedido com o número #${idNum}. Use outro número.`);
+          orderNumberInput.value = '';
+          orderNumberInput.focus();
+          return;
+        }
+
+        // adiciona no Firestore
+        await addDoc(collection(db, "pedidos"), {
+          numero: idNum,
+          cliente: cliente,
+          status: status,
+          createdAt: new Date().toISOString()
+        });
+
+        showStatus(`✅ Pedido #${idNum} adicionado!`);
+        // limpa campos
+        orderNumberInput.value = '';
+        clientNameInput.value = '';
+        orderNumberInput.focus();
+      } catch (error) {
+        console.error("Erro detalhado ao salvar: ", error);
+        let errorMsg = "Erro ao salvar pedido. ";
+        if (error.code === 'permission-denied') {
+          errorMsg += "Sem permissão para escrever no Firebase. Verifique as regras de segurança.";
+        } else if (error.code === 'unavailable') {
+          errorMsg += "Serviço indisponível. Verifique sua conexão com a internet.";
+        } else {
+          errorMsg += error.message || "Verifique o console para mais detalhes.";
+        }
+        alert(errorMsg);
+        showStatus(errorMsg, true);
+      }
+    }
+
+    async function deleteOrder(id) {
+      const order = orders.find(o => o.id === id);
+      if (!order) return;
+      if (confirm(`Remover pedido #${order.numero} — ${order.cliente}?`)) {
+        try {
+          if (editingId === id) cancelEdit();
+          await deleteDoc(doc(db, "pedidos", id));
+          showStatus(`🗑️ Pedido #${order.numero} removido`);
+        } catch (error) {
+          console.error("Erro ao remover: ", error);
+          let errorMsg = "Erro ao remover pedido. ";
+          if (error.code === 'permission-denied') {
+            errorMsg += "Sem permissão para remover. Verifique as regras de segurança.";
+          } else {
+            errorMsg += error.message || "Verifique o console.";
+          }
+          alert(errorMsg);
+          showStatus(errorMsg, true);
+        }
+      }
+    }
+
+    function startEdit(id) {
+      const order = orders.find(o => o.id === id);
+      if (!order) return;
+      orderNumberInput.value = order.numero;
+      clientNameInput.value = order.cliente;
+      orderStatusSelect.value = order.status;
+      editingId = id;
+      addBtn.textContent = '💾 atualizar';
+      editHint.style.display = 'block';
+      editIdHint.textContent = order.numero;
+      orderNumberInput.focus();
+    }
+
+    function cancelEdit() {
+      editingId = null;
+      addBtn.textContent = '+ adicionar';
+      editHint.style.display = 'none';
+    }
+
+    // ----- Firebase Realtime Listener -----
+    function listenOrders() {
+      try {
+        const q = query(collection(db, "pedidos"), orderBy("numero", "asc"));
+        
+        onSnapshot(q, (snapshot) => {
+          orders = [];
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            orders.push({
+              id: doc.id,
+              numero: data.numero || 0,
+              cliente: data.cliente || '',
+              status: data.status || 'Separado'
+            });
+          });
+          render();
+          
+          // Se estava editando e o pedido foi removido externamente, cancela edição
+          if (editingId && !orders.some(o => o.id === editingId)) {
+            cancelEdit();
+          }
+        }, (error) => {
+          console.error("Erro no listener: ", error);
+          let errorMsg = "Erro ao carregar dados do Firebase. ";
+          if (error.code === 'permission-denied') {
+            errorMsg += "Sem permissão para ler os dados. Verifique as regras de segurança do Firestore.";
+          } else if (error.code === 'unavailable') {
+            errorMsg += "Serviço indisponível. Verifique sua conexão com a internet.";
+          } else {
+            errorMsg += error.message || "Verifique o console.";
+          }
+          alert(errorMsg);
+          showStatus(errorMsg, true);
+        });
+      } catch (error) {
+        console.error("Erro ao configurar listener: ", error);
+        alert("Erro ao conectar ao Firebase. Verifique sua configuração.");
+      }
+    }
+
+    // ----- Testar conexão com Firebase -----
+    async function testFirebaseConnection() {
+      try {
+        const testRef = doc(db, "test", "connection");
+        await addDoc(collection(db, "test"), { test: true, timestamp: new Date().toISOString() });
+        console.log("✅ Conexão com Firebase OK!");
+        showStatus("✅ Conectado ao Firebase com sucesso!");
+        return true;
+      } catch (error) {
+        console.error("❌ Erro na conexão com Firebase:", error);
+        let errorMsg = "❌ Falha na conexão com Firebase. ";
+        if (error.code === 'permission-denied') {
+          errorMsg += "Verifique as regras de segurança do Firestore.";
+        } else {
+          errorMsg += error.message || "Verifique sua configuração.";
+        }
+        showStatus(errorMsg, true);
+        return false;
+      }
+    }
+
+    // ----- Filter handler -----
+    function handleFilterChange() {
+      currentFilter = filterStatus.value;
+      render();
+    }
+
+    // ----- inicialização -----
+    async function init() {
+      // Testa conexão primeiro
+      const connected = await testFirebaseConnection();
+      
+      if (connected) {
+        listenOrders();
+      } else {
+        // Tenta reconectar após 5 segundos
+        setTimeout(async () => {
+          const retry = await testFirebaseConnection();
+          if (retry) {
+            listenOrders();
+          }
+        }, 5000);
+      }
+
+      addBtn.addEventListener('click', addOrUpdateOrder);
+
+      orderNumberInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          clientNameInput.focus();
+        }
+      });
+      clientNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addOrUpdateOrder();
+        }
+      });
+
+      clearAllBtn.addEventListener('click', async function() {
+        if (orders.length === 0) return;
+        if (confirm(`Remover TODOS os ${orders.length} pedidos? Esta ação não pode ser desfeita.`)) {
+          try {
+            for (const order of orders) {
+              await deleteDoc(doc(db, "pedidos", order.id));
+            }
+            cancelEdit();
+            showStatus(`🗑️ Todos os ${orders.length} pedidos foram removidos.`);
+          } catch (error) {
+            console.error("Erro ao limpar: ", error);
+            alert("Erro ao remover todos os pedidos.");
+            showStatus("Erro ao remover pedidos.", true);
+          }
+        }
+      });
+
+      filterStatus.addEventListener('change', handleFilterChange);
+    }
+
+    // Inicializa quando o DOM estiver pronto
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+
   <style>
     /* ---------- RESET & BASE (dark theme) ---------- */
     * {
@@ -402,288 +779,5 @@
   </div>
 </div>
 
-<script>
-  (function() {
-    "use strict";
-
-    // ----- DOM refs -----
-    const orderNumberInput = document.getElementById('orderNumber');
-    const clientNameInput  = document.getElementById('clientName');
-    const orderStatusSelect = document.getElementById('orderStatus');
-    const addBtn = document.getElementById('addOrderBtn');
-    const clearAllBtn = document.getElementById('clearAllBtn');
-    const orderListEl = document.getElementById('orderList');
-    const orderCountSpan = document.getElementById('orderCount');
-    const orderCountLabel = document.getElementById('orderCountLabel');
-    const editHint = document.getElementById('editHint');
-    const editIdHint = document.getElementById('editIdHint');
-    const statusMsg = document.getElementById('statusMsg');
-    const filterStatus = document.getElementById('filterStatus');
-    const filterCount = document.getElementById('filterCount');
-
-    // ----- state -----
-    let orders = [];
-    let editingIndex = -1;  // -1 = modo adição, >=0 = editando
-    let currentFilter = 'todos';
-
-    // ----- UI Helpers -----
-    function showStatus(message, isError = false) {
-      statusMsg.textContent = message;
-      statusMsg.style.display = 'block';
-      statusMsg.style.color = isError ? '#f5a3a3' : '#7cdbaa';
-      statusMsg.style.background = isError ? '#2a1a1a' : '#1a2a1a';
-      statusMsg.style.borderColor = isError ? '#5a2e2e' : '#2a5a3a';
-      setTimeout(() => {
-        statusMsg.style.display = 'none';
-      }, 4000);
-    }
-
-    // ----- Local Storage -----
-    function loadOrders() {
-      try {
-        const stored = localStorage.getItem('orders_minimalist_dark');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) orders = parsed;
-          else orders = [];
-        } else {
-          orders = [];
-        }
-      } catch (_) {
-        orders = [];
-      }
-      // Garantia de campos
-      orders = orders.filter(o => o && typeof o === 'object')
-                     .map(o => ({
-                       id: o.id ?? 0,
-                       cliente: o.cliente ?? '',
-                       status: o.status ?? 'Separado'
-                     }));
-    }
-
-    function saveOrders() {
-      localStorage.setItem('orders_minimalist_dark', JSON.stringify(orders));
-      showStatus(`✅ ${orders.length} pedidos salvos`);
-    }
-
-    // ----- Filter -----
-    function getFilteredOrders() {
-      if (currentFilter === 'todos') {
-        return orders;
-      }
-      return orders.filter(o => o.status === currentFilter);
-    }
-
-    // ----- render -----
-    function render() {
-      const filtered = getFilteredOrders();
-      const count = filtered.length;
-      const totalCount = orders.length;
-      
-      orderCountSpan.textContent = totalCount;
-      orderCountLabel.textContent = totalCount;
-      filterCount.textContent = `${count} ${count === 1 ? 'pedido' : 'pedidos'}`;
-
-      if (count === 0) {
-        const msg = totalCount === 0 ? 'nenhum pedido registrado' : `nenhum pedido com status "${currentFilter}"`;
-        orderListEl.innerHTML = `<div class="empty-state">${msg}</div>`;
-        return;
-      }
-
-      let html = '';
-      for (let i = 0; i < filtered.length; i++) {
-        const o = filtered[i];
-        // Encontra o índice original para edição/remoção
-        const originalIndex = orders.findIndex(order => order.id === o.id && order.cliente === o.cliente && order.status === o.status);
-        const statusClass = 
-          o.status === 'Separado' ? 'status-separado' :
-          o.status === 'Saiu' ? 'status-saiu' :
-          o.status === 'em compra' ? 'status-compra' :
-          o.status === 'em separação' ? 'status-separacao' : '';
-
-        html += `
-          <div class="order-item" data-index="${originalIndex}">
-            <span class="order-id">#${o.id}</span>
-            <span class="order-name">${escapeHtml(o.cliente) || '—'}</span>
-            <span class="order-status ${statusClass}">${escapeHtml(o.status)}</span>
-            <div class="order-actions">
-              <button class="btn-icon edit" data-action="edit" data-index="${originalIndex}" aria-label="editar pedido">✎</button>
-              <button class="btn-icon delete" data-action="delete" data-index="${originalIndex}" aria-label="remover pedido">✕</button>
-            </div>
-          </div>
-        `;
-      }
-      orderListEl.innerHTML = html;
-
-      // eventos delegados para editar e deletar
-      orderListEl.querySelectorAll('[data-action="edit"]').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-          const index = parseInt(this.getAttribute('data-index'), 10);
-          if (!isNaN(index) && index >= 0 && index < orders.length) {
-            startEdit(index);
-          }
-        });
-      });
-
-      orderListEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-          const index = parseInt(this.getAttribute('data-index'), 10);
-          if (!isNaN(index) && index >= 0 && index < orders.length) {
-            deleteOrder(index);
-          }
-        });
-      });
-    }
-
-    function escapeHtml(text) {
-      if (!text) return '';
-      const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-      };
-      return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
-    }
-
-    // ----- CRUD -----
-    function addOrUpdateOrder() {
-      const rawId = orderNumberInput.value.trim();
-      if (rawId === '') {
-        alert('Informe o número do pedido.');
-        orderNumberInput.focus();
-        return;
-      }
-      const idNum = Number(rawId);
-      if (isNaN(idNum) || !Number.isFinite(idNum) || idNum < 0) {
-        alert('Número do pedido deve ser um valor numérico válido.');
-        orderNumberInput.value = '';
-        orderNumberInput.focus();
-        return;
-      }
-
-      const cliente = clientNameInput.value.trim() || 'cliente';
-      const status = orderStatusSelect.value;
-
-      // se estiver editando
-      if (editingIndex >= 0) {
-        // verifica se o ID mudou e se já existe outro com esse ID
-        const existing = orders.find((o, idx) => o.id === idNum && idx !== editingIndex);
-        if (existing) {
-          alert(`Já existe um pedido com o número #${idNum}. Use outro número.`);
-          orderNumberInput.value = '';
-          orderNumberInput.focus();
-          return;
-        }
-        // atualiza
-        orders[editingIndex] = { id: idNum, cliente, status };
-        saveOrders();
-        render();
-        showStatus(`✅ Pedido #${idNum} atualizado!`);
-        cancelEdit();
-        return;
-      }
-
-      // modo adição: verifica duplicidade
-      const exists = orders.some(o => o.id === idNum);
-      if (exists) {
-        alert(`Já existe um pedido com o número #${idNum}. Use outro número.`);
-        orderNumberInput.value = '';
-        orderNumberInput.focus();
-        return;
-      }
-
-      // adiciona
-      orders.push({ id: idNum, cliente, status });
-      saveOrders();
-      render();
-      showStatus(`✅ Pedido #${idNum} adicionado!`);
-      // limpa campos
-      orderNumberInput.value = '';
-      clientNameInput.value = '';
-      orderNumberInput.focus();
-    }
-
-    function deleteOrder(index) {
-      if (index < 0 || index >= orders.length) return;
-      const removed = orders[index];
-      if (confirm(`Remover pedido #${removed.id} — ${removed.cliente}?`)) {
-        if (editingIndex === index) cancelEdit();
-        orders.splice(index, 1);
-        saveOrders();
-        render();
-        showStatus(`🗑️ Pedido #${removed.id} removido`);
-      }
-    }
-
-    function startEdit(index) {
-      if (index < 0 || index >= orders.length) return;
-      const order = orders[index];
-      orderNumberInput.value = order.id;
-      clientNameInput.value = order.cliente;
-      orderStatusSelect.value = order.status;
-      editingIndex = index;
-      addBtn.textContent = '💾 atualizar';
-      editHint.style.display = 'block';
-      editIdHint.textContent = order.id;
-      orderNumberInput.focus();
-    }
-
-    function cancelEdit() {
-      editingIndex = -1;
-      addBtn.textContent = '+ adicionar';
-      editHint.style.display = 'none';
-    }
-
-    function clearAllOrders() {
-      if (orders.length === 0) return;
-      if (confirm(`Remover TODOS os ${orders.length} pedidos? Esta ação não pode ser desfeita.`)) {
-        cancelEdit();
-        orders = [];
-        saveOrders();
-        render();
-        showStatus('🗑️ Todos os pedidos foram removidos');
-        orderNumberInput.focus();
-      }
-    }
-
-    // ----- Filter handler -----
-    function handleFilterChange() {
-      currentFilter = filterStatus.value;
-      render();
-    }
-
-    // ----- inicialização -----
-    function init() {
-      loadOrders();
-      render();
-      showStatus(`📦 ${orders.length} pedidos carregados`);
-
-      addBtn.addEventListener('click', addOrUpdateOrder);
-
-      orderNumberInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          clientNameInput.focus();
-        }
-      });
-      clientNameInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          addOrUpdateOrder();
-        }
-      });
-
-      clearAllBtn.addEventListener('click', clearAllOrders);
-      filterStatus.addEventListener('change', handleFilterChange);
-
-      // Se estiver vazio, mantém vazio (sem dados de exemplo)
-    }
-
-    // inicia
-    init();
-  })();
-</script>
 </body>
 </html>
