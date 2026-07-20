@@ -9,7 +9,7 @@
     // Import Firebase SDKs
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
-    import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     // Firebase configuration
     const firebaseConfig = {
@@ -28,6 +28,7 @@
     const db = getFirestore(app);
 
     console.log("✅ Firebase inicializado com sucesso!");
+    console.log("📡 Sincronização em tempo real ativada para múltiplos usuários!");
 
     // ----- DOM refs -----
     const orderNumberInput = document.getElementById('orderNumber');
@@ -43,11 +44,13 @@
     const statusMsg = document.getElementById('statusMsg');
     const filterStatus = document.getElementById('filterStatus');
     const filterCount = document.getElementById('filterCount');
+    const syncStatus = document.getElementById('syncStatus');
 
     // ----- state -----
     let orders = [];
     let editingId = null;
     let currentFilter = 'todos';
+    let isSyncing = false;
 
     // ----- UI Helpers -----
     function showStatus(message, isError = false) {
@@ -59,6 +62,16 @@
       setTimeout(() => {
         statusMsg.style.display = 'none';
       }, 4000);
+    }
+
+    function updateSyncStatus(connected) {
+      if (connected) {
+        syncStatus.textContent = '🟢 Sincronizado';
+        syncStatus.style.color = '#7cdbaa';
+      } else {
+        syncStatus.textContent = '🔴 Offline';
+        syncStatus.style.color = '#f5a3a3';
+      }
     }
 
     // ----- render com filtro -----
@@ -91,8 +104,11 @@
           o.status === 'em compra' ? 'status-compra' :
           o.status === 'em separação' ? 'status-separacao' : '';
 
+        const isEditing = editingId === o.id;
+        const editClass = isEditing ? 'editing' : '';
+
         html += `
-          <div class="order-item" data-id="${o.id}">
+          <div class="order-item ${editClass}" data-id="${o.id}">
             <span class="order-id">#${o.numero}</span>
             <span class="order-name">${escapeHtml(o.cliente) || '—'}</span>
             <span class="order-status ${statusClass}">${escapeHtml(o.status)}</span>
@@ -133,7 +149,7 @@
       return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
-    // ----- CRUD com Firebase -----
+    // ----- CRUD com Firebase (usando setDoc com ID personalizado) -----
     async function addOrUpdateOrder() {
       const rawId = orderNumberInput.value.trim();
       if (rawId === '') {
@@ -168,9 +184,10 @@
           await updateDoc(docRef, {
             numero: idNum,
             cliente: cliente,
-            status: status
+            status: status,
+            updatedAt: serverTimestamp()
           });
-          showStatus(`✅ Pedido #${idNum} atualizado!`);
+          showStatus(`✅ Pedido #${idNum} atualizado! (Sincronizado)`);
           cancelEdit();
           return;
         }
@@ -184,15 +201,29 @@
           return;
         }
 
-        // adiciona no Firestore
-        await addDoc(collection(db, "pedidos"), {
+        // Usa o número do pedido como ID do documento para facilitar
+        const docId = `pedido_${idNum}`;
+        const docRef = doc(db, "pedidos", docId);
+        
+        // Verifica se o documento já existe
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          alert(`Já existe um pedido com o número #${idNum}. Use outro número.`);
+          orderNumberInput.value = '';
+          orderNumberInput.focus();
+          return;
+        }
+
+        // Adiciona no Firestore com ID personalizado
+        await setDoc(docRef, {
           numero: idNum,
           cliente: cliente,
           status: status,
-          createdAt: new Date().toISOString()
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
 
-        showStatus(`✅ Pedido #${idNum} adicionado!`);
+        showStatus(`✅ Pedido #${idNum} adicionado! (Sincronizado)`);
         // limpa campos
         orderNumberInput.value = '';
         clientNameInput.value = '';
@@ -201,14 +232,23 @@
         console.error("Erro detalhado ao salvar: ", error);
         let errorMsg = "Erro ao salvar pedido. ";
         if (error.code === 'permission-denied') {
-          errorMsg += "Sem permissão para escrever no Firebase. Verifique as regras de segurança.";
+          errorMsg += "Sem permissão para escrever no Firebase. Verifique as regras de segurança do Firestore.";
+          errorMsg += "\n\n📌 Configure as regras de segurança no Firebase Console:\n";
+          errorMsg += "rules_version = '2';\n";
+          errorMsg += "service cloud.firestore {\n";
+          errorMsg += "  match /databases/{database}/documents {\n";
+          errorMsg += "    match /{document=**} {\n";
+          errorMsg += "      allow read, write: if true;\n";
+          errorMsg += "    }\n";
+          errorMsg += "  }\n";
+          errorMsg += "}";
         } else if (error.code === 'unavailable') {
           errorMsg += "Serviço indisponível. Verifique sua conexão com a internet.";
         } else {
           errorMsg += error.message || "Verifique o console para mais detalhes.";
         }
         alert(errorMsg);
-        showStatus(errorMsg, true);
+        showStatus("❌ Erro ao salvar pedido", true);
       }
     }
 
@@ -219,7 +259,7 @@
         try {
           if (editingId === id) cancelEdit();
           await deleteDoc(doc(db, "pedidos", id));
-          showStatus(`🗑️ Pedido #${order.numero} removido`);
+          showStatus(`🗑️ Pedido #${order.numero} removido (Sincronizado)`);
         } catch (error) {
           console.error("Erro ao remover: ", error);
           let errorMsg = "Erro ao remover pedido. ";
@@ -229,7 +269,7 @@
             errorMsg += error.message || "Verifique o console.";
           }
           alert(errorMsg);
-          showStatus(errorMsg, true);
+          showStatus("❌ Erro ao remover pedido", true);
         }
       }
     }
@@ -245,20 +285,22 @@
       editHint.style.display = 'block';
       editIdHint.textContent = order.numero;
       orderNumberInput.focus();
+      render(); // para destacar o item sendo editado
     }
 
     function cancelEdit() {
       editingId = null;
       addBtn.textContent = '+ adicionar';
       editHint.style.display = 'none';
+      render(); // remove destaque
     }
 
-    // ----- Firebase Realtime Listener -----
+    // ----- Firebase Realtime Listener (sincronização entre usuários) -----
     function listenOrders() {
       try {
         const q = query(collection(db, "pedidos"), orderBy("numero", "asc"));
         
-        onSnapshot(q, (snapshot) => {
+        const unsubscribe = onSnapshot(q, (snapshot) => {
           orders = [];
           snapshot.forEach((doc) => {
             const data = doc.data();
@@ -271,46 +313,83 @@
           });
           render();
           
+          // Atualiza status de sincronização
+          updateSyncStatus(true);
+          showStatus(`📦 ${orders.length} pedidos sincronizados em tempo real`);
+          
           // Se estava editando e o pedido foi removido externamente, cancela edição
           if (editingId && !orders.some(o => o.id === editingId)) {
             cancelEdit();
           }
         }, (error) => {
           console.error("Erro no listener: ", error);
+          updateSyncStatus(false);
           let errorMsg = "Erro ao carregar dados do Firebase. ";
           if (error.code === 'permission-denied') {
             errorMsg += "Sem permissão para ler os dados. Verifique as regras de segurança do Firestore.";
+            errorMsg += "\n\n📌 Configure as regras de segurança no Firebase Console:\n";
+            errorMsg += "rules_version = '2';\n";
+            errorMsg += "service cloud.firestore {\n";
+            errorMsg += "  match /databases/{database}/documents {\n";
+            errorMsg += "    match /{document=**} {\n";
+            errorMsg += "      allow read, write: if true;\n";
+            errorMsg += "    }\n";
+            errorMsg += "  }\n";
+            errorMsg += "}";
           } else if (error.code === 'unavailable') {
             errorMsg += "Serviço indisponível. Verifique sua conexão com a internet.";
           } else {
             errorMsg += error.message || "Verifique o console.";
           }
           alert(errorMsg);
-          showStatus(errorMsg, true);
+          showStatus("❌ Erro ao carregar dados", true);
         });
+
+        // Retorna unsubscribe para limpeza se necessário
+        return unsubscribe;
       } catch (error) {
         console.error("Erro ao configurar listener: ", error);
         alert("Erro ao conectar ao Firebase. Verifique sua configuração.");
+        updateSyncStatus(false);
       }
     }
 
     // ----- Testar conexão com Firebase -----
     async function testFirebaseConnection() {
       try {
-        const testRef = doc(db, "test", "connection");
-        await addDoc(collection(db, "test"), { test: true, timestamp: new Date().toISOString() });
+        // Tenta escrever um documento de teste
+        const testRef = doc(db, "test", "connection_test");
+        await setDoc(testRef, { 
+          test: true, 
+          timestamp: new Date().toISOString(),
+          message: "Teste de conexão"
+        });
+        // Limpa o documento de teste
+        await deleteDoc(testRef);
         console.log("✅ Conexão com Firebase OK!");
         showStatus("✅ Conectado ao Firebase com sucesso!");
+        updateSyncStatus(true);
         return true;
       } catch (error) {
         console.error("❌ Erro na conexão com Firebase:", error);
+        updateSyncStatus(false);
         let errorMsg = "❌ Falha na conexão com Firebase. ";
         if (error.code === 'permission-denied') {
-          errorMsg += "Verifique as regras de segurança do Firestore.";
+          errorMsg += "Verifique as regras de segurança do Firestore.\n\n";
+          errorMsg += "📌 Configure as regras de segurança no Firebase Console:\n";
+          errorMsg += "rules_version = '2';\n";
+          errorMsg += "service cloud.firestore {\n";
+          errorMsg += "  match /databases/{database}/documents {\n";
+          errorMsg += "    match /{document=**} {\n";
+          errorMsg += "      allow read, write: if true;\n";
+          errorMsg += "    }\n";
+          errorMsg += "  }\n";
+          errorMsg += "}";
         } else {
           errorMsg += error.message || "Verifique sua configuração.";
         }
-        showStatus(errorMsg, true);
+        alert(errorMsg);
+        showStatus("❌ Falha na conexão com Firebase", true);
         return false;
       }
     }
@@ -355,22 +434,26 @@
 
       clearAllBtn.addEventListener('click', async function() {
         if (orders.length === 0) return;
-        if (confirm(`Remover TODOS os ${orders.length} pedidos? Esta ação não pode ser desfeita.`)) {
+        if (confirm(`Remover TODOS os ${orders.length} pedidos? Esta ação não pode ser desfeita e afetará todos os usuários.`)) {
           try {
             for (const order of orders) {
               await deleteDoc(doc(db, "pedidos", order.id));
             }
             cancelEdit();
-            showStatus(`🗑️ Todos os ${orders.length} pedidos foram removidos.`);
+            showStatus(`🗑️ Todos os ${orders.length} pedidos foram removidos. (Sincronizado)`);
           } catch (error) {
             console.error("Erro ao limpar: ", error);
             alert("Erro ao remover todos os pedidos.");
-            showStatus("Erro ao remover pedidos.", true);
+            showStatus("❌ Erro ao remover pedidos", true);
           }
         }
       });
 
       filterStatus.addEventListener('change', handleFilterChange);
+
+      // Mensagem de boas-vindas com integração multi-usuário
+      console.log("👥 Sistema multi-usuário ativo!");
+      console.log("📡 Qualquer alteração é sincronizada em tempo real para todos os usuários conectados.");
     }
 
     // Inicializa quando o DOM estiver pronto
@@ -419,7 +502,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
     }
     h1 small {
       font-size: 0.75rem;
@@ -430,6 +513,24 @@
       padding: 4px 12px;
       border-radius: 40px;
       border: 1px solid #2f353d;
+    }
+
+    /* Status de sincronização */
+    .sync-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.7rem;
+      color: #7a828a;
+      margin-bottom: 20px;
+      padding: 6px 14px;
+      background: #1a1e23;
+      border-radius: 40px;
+      border: 1px solid #272d34;
+      justify-content: center;
+    }
+    .sync-status span {
+      font-weight: 500;
     }
 
     /* ---------- FORMULÁRIO ---------- */
@@ -607,8 +708,13 @@
       flex-wrap: wrap;
       align-items: center;
       gap: 8px 12px;
-      transition: 0.1s;
+      transition: 0.2s;
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+
+    .order-item.editing {
+      border-color: #5b7cfa;
+      box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.2);
     }
 
     .order-item .order-id {
@@ -717,6 +823,7 @@
       background: #1a1e23;
       color: #7a828a;
       text-align: center;
+      white-space: pre-line;
     }
   </style>
 </head>
@@ -727,6 +834,13 @@
     <span>📋</span> pedidos
     <small id="orderCount">0</small>
   </h1>
+
+  <!-- Status de sincronização -->
+  <div class="sync-status">
+    <span>📡</span>
+    <span id="syncStatus">🔄 Conectando...</span>
+    <span style="margin-left: auto; font-size: 0.6rem; color: #5a6370;">tempo real</span>
+  </div>
 
   <!-- FORMULÁRIO -->
   <div class="form-card" id="formCard">
